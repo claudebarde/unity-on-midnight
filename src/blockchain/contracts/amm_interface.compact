@@ -1,0 +1,143 @@
+// amm_interface.compact - AMM Pool Interface for Unity App
+
+pragma language_version >= 0.14.0;
+
+import CompactStandardLibrary;
+
+// Define events
+export struct DepositedEvent {
+    did: Bytes<32>,
+    amount: Uint<64>
+}
+
+export struct BorrowedEvent {
+    did: Bytes<32>,
+    amount: Uint<64>
+}
+
+export struct RepaidEvent {
+    did: Bytes<32>,
+    amount: Uint<64>
+}
+
+export struct DefaultHandledEvent {
+    did: Bytes<32>,
+    amount: Uint<64>
+}
+
+struct PoolState {
+    tDust: Uint<64>,
+    loanTokens: Uint<64>,
+    lossPool: Uint<64>,
+    totalDeposits: Uint<64>
+}
+
+ledger pool: Map<Bytes<32>, PoolState>;
+ledger deactivated: Map<Bytes<32>, Field>;
+ledger didCounter: Counter;
+
+export circuit deposit(did: Bytes<32>, amount: Uint<64>): [] {
+    assert !deactivated.member(did) || deactivated.lookup(did) == 0 "DID deactivated";
+    assert amount >= 100 as Uint<64> "Deposit must be at least 100 tDust";
+    assert amount <= 1000 as Uint<64> "Deposit must be at most 1000 tDust";
+
+    const pool_id = persistent_hash<Vector<1, Bytes<32>>>([did]);
+    const tDust_base = pool.member(pool_id) ? pool.lookup(pool_id).tDust : 0 as Uint<64>;
+    const loanTokens_base = pool.member(pool_id) ? pool.lookup(pool_id).loanTokens : 1 as Uint<64>;
+    const lossPool_base = pool.member(pool_id) ? pool.lookup(pool_id).lossPool : 0 as Uint<64>;
+    const totalDeposits_base = pool.member(pool_id) ? pool.lookup(pool_id).totalDeposits : 0 as Uint<64>;
+
+    const tDust_increment = amount as Uint<64>;
+    assert tDust_base <= 18446744073709551615 - tDust_increment "tDust overflow before addition";
+    const new_tDust = (tDust_base + tDust_increment) as Uint<64>;
+
+    const totalDeposits_increment = amount as Uint<64>;
+    assert totalDeposits_base <= 18446744073709551615 - totalDeposits_increment "totalDeposits overflow before addition";
+    const new_totalDeposits = (totalDeposits_base + totalDeposits_increment) as Uint<64>;
+
+    pool.insert(pool_id, PoolState {
+        tDust: new_tDust,
+        loanTokens: loanTokens_base,
+        lossPool: lossPool_base,
+        totalDeposits: new_totalDeposits
+    });
+    return [];
+}
+
+export circuit borrow(did: Bytes<32>, amount: Uint<64>, fee: Uint<64>, loss_pool_contribution: Uint<64>): [] {
+    assert !deactivated.member(did) || deactivated.lookup(did) == 0 "DID deactivated";
+    const pool_id = persistent_hash<Vector<1, Bytes<32>>>([did]);
+    const tDust_base = pool.member(pool_id) ? pool.lookup(pool_id).tDust : 0 as Uint<64>;
+    const loanTokens_base = pool.member(pool_id) ? pool.lookup(pool_id).loanTokens : 1 as Uint<64>;
+    const lossPool_base = pool.member(pool_id) ? pool.lookup(pool_id).lossPool : 0 as Uint<64>;
+    const totalDeposits_base = pool.member(pool_id) ? pool.lookup(pool_id).totalDeposits : 0 as Uint<64>;
+
+    assert tDust_base >= amount "Insufficient liquidity";
+
+    const tDust_decrement = (amount + fee) as Uint<64>;
+    assert tDust_base >= tDust_decrement "tDust underflow before subtraction";
+    const new_tDust = (tDust_base - tDust_decrement) as Uint<64>;
+
+    const lossPool_increment = loss_pool_contribution as Uint<64>;
+    assert lossPool_base <= 18446744073709551615 - lossPool_increment "lossPool overflow before addition";
+    const new_lossPool = (lossPool_base + lossPool_increment) as Uint<64>;
+
+    const new_loanTokens = (loanTokens_base + 1) as Uint<64>;
+
+    pool.insert(pool_id, PoolState {
+        tDust: new_tDust,
+        loanTokens: new_loanTokens,
+        lossPool: new_lossPool,
+        totalDeposits: totalDeposits_base
+    });
+    return [];
+}
+
+export circuit repay(did: Bytes<32>, amount: Uint<64>): [] {
+    assert !deactivated.member(did) || deactivated.lookup(did) == 0 "DID deactivated";
+    const pool_id = persistent_hash<Vector<1, Bytes<32>>>([did]);
+    const tDust_base = pool.member(pool_id) ? pool.lookup(pool_id).tDust : 0 as Uint<64>;
+    const loanTokens_base = pool.member(pool_id) ? pool.lookup(pool_id).loanTokens : 1 as Uint<64>;
+    const lossPool_base = pool.member(pool_id) ? pool.lookup(pool_id).lossPool : 0 as Uint<64>;
+    const totalDeposits_base = pool.member(pool_id) ? pool.lookup(pool_id).totalDeposits : 0 as Uint<64>;
+
+    const tDust_increment = amount as Uint<64>;
+    assert tDust_base <= 18446744073709551615 - tDust_increment "tDust overflow before addition";
+    const new_tDust = (tDust_base + tDust_increment) as Uint<64>;
+
+    const new_loanTokens = (loanTokens_base - 1) as Uint<64>;
+
+    pool.insert(pool_id, PoolState {
+        tDust: new_tDust,
+        loanTokens: new_loanTokens,
+        lossPool: lossPool_base,
+        totalDeposits: totalDeposits_base
+    });
+    return [];
+}
+
+export circuit distribute_interest(did: Bytes<32>, amount: Uint<64>, share: Uint<64>): [] {
+    return [];
+}
+
+export circuit compensate_default(did: Bytes<32>, amount: Uint<64>): [] {
+    const pool_id = persistent_hash<Vector<1, Bytes<32>>>([did]);
+    const tDust_base = pool.member(pool_id) ? pool.lookup(pool_id).tDust : 0 as Uint<64>;
+    const loanTokens_base = pool.member(pool_id) ? pool.lookup(pool_id).loanTokens : 1 as Uint<64>;
+    const lossPool_base = pool.member(pool_id) ? pool.lookup(pool_id).lossPool : 0 as Uint<64>;
+    const totalDeposits_base = pool.member(pool_id) ? pool.lookup(pool_id).totalDeposits : 0 as Uint<64>;
+
+    assert lossPool_base >= amount "Insufficient Loss Pool funds";
+
+    const lossPool_decrement = amount as Uint<64>;
+    assert lossPool_base >= lossPool_decrement "lossPool underflow before subtraction";
+    const new_lossPool = (lossPool_base - lossPool_decrement) as Uint<64>;
+
+    pool.insert(pool_id, PoolState {
+        tDust: tDust_base,
+        loanTokens: loanTokens_base,
+        lossPool: new_lossPool,
+        totalDeposits: totalDeposits_base
+    });
+    return [];
+}
