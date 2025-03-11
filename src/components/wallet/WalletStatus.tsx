@@ -2,7 +2,7 @@
 
 import { useMidnightLace } from '@/hooks/useMidnightLace';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { NetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { NetworkId } from '@midnight-ntwrk/ledger';
 import { Badge } from '@/components/ui/badge';
 import { ShieldCheck, Network, Fingerprint, Key } from 'lucide-react';
 
@@ -18,14 +18,10 @@ export function WalletStatus() {
   };
 
   const getNetworkBadgeColor = (network: NetworkId) => {
-    switch (network) {
-      case NetworkId.MAINNET:
-        return 'bg-green-500/10 text-green-500';
-      case NetworkId.TESTNET:
-        return 'bg-yellow-500/10 text-yellow-500';
-      default:
-        return 'bg-gray-500/10 text-gray-500';
+    if (network === NetworkId.TestNet) {
+      return 'bg-yellow-500/10 text-yellow-500';
     }
+    return 'bg-gray-500/10 text-gray-500';
   };
 
   const getKycLevelColor = (level: number | null) => {
@@ -40,47 +36,59 @@ export function WalletStatus() {
     }
   };
 
+  const getKycLevelText = (level: number | null) => {
+    if (level === null) return 'Unknown';
+    switch (level) {
+      case 2:
+        return 'Full KYC';
+      case 1:
+        return 'Basic KYC';
+      default:
+        return 'No KYC';
+    }
+  };
+
   return (
-    <Card className="w-full max-w-md">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-lg font-medium">Wallet Status</CardTitle>
+        <CardTitle>Wallet Status</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Key className="h-4 w-4" />
+            <Key className="h-4 w-4 text-gray-500" />
             <span className="text-sm font-medium">Address</span>
           </div>
-          <span className="text-sm text-muted-foreground">{formatAddress(address)}</span>
+          <span className="text-sm font-mono">{formatAddress(address)}</span>
         </div>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Network className="h-4 w-4" />
+            <Network className="h-4 w-4 text-gray-500" />
             <span className="text-sm font-medium">Network</span>
           </div>
           <Badge variant="outline" className={getNetworkBadgeColor(networkId)}>
-            {NetworkId[networkId]}
+            TestNet
           </Badge>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Fingerprint className="h-4 w-4" />
-            <span className="text-sm font-medium">DID</span>
+        {did && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Fingerprint className="h-4 w-4 text-gray-500" />
+              <span className="text-sm font-medium">DID</span>
+            </div>
+            <span className="text-sm font-mono">{formatAddress(did)}</span>
           </div>
-          <span className="text-sm text-muted-foreground">
-            {did ? formatAddress(did) : 'Not available'}
-          </span>
-        </div>
+        )}
 
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <ShieldCheck className="h-4 w-4" />
+            <ShieldCheck className="h-4 w-4 text-gray-500" />
             <span className="text-sm font-medium">KYC Level</span>
           </div>
           <Badge variant="outline" className={getKycLevelColor(kycLevel)}>
-            {kycLevel === null ? 'Not verified' : `Level ${kycLevel}`}
+            {getKycLevelText(kycLevel)}
           </Badge>
         </div>
       </CardContent>

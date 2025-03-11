@@ -2,8 +2,8 @@ type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 interface LogOptions {
   level?: LogLevel;
-  data?: any;
   component?: string;
+  data?: any;
 }
 
 class Logger {
@@ -11,7 +11,7 @@ class Logger {
     if (!address) return '';
     // Split the address at the | character
     const [part1, part2] = address.split('|');
-    if (!part2) return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    if (!part2) return `${part1.slice(0, 6)}...${part1.slice(-4)}`;
     
     // Format both parts
     return `${part1.slice(0, 6)}...${part1.slice(-4)}|${part2.slice(0, 6)}...${part2.slice(-4)}`;
@@ -54,30 +54,35 @@ class Logger {
 
   static wallet = {
     connecting: () => {
-      this.log('Initiating wallet connection...', { level: 'info', component: 'Wallet' });
+      this.log('Initiating wallet connection...', {
+        component: 'Wallet'
+      });
     },
     
-    connected: (address: string) => {
-      this.log(`Wallet connected: ${this.formatAddress(address)}`, {
-        level: 'info',
+    connected: (data: any) => {
+      this.log('Wallet connected successfully', {
         component: 'Wallet',
-        data: { fullAddress: address }
+        data
       });
     },
     
     disconnecting: () => {
-      this.log('Initiating wallet disconnect...', { level: 'info', component: 'Wallet' });
+      this.log('Initiating wallet disconnect...', {
+        component: 'Wallet'
+      });
     },
     
     disconnected: () => {
-      this.log('Wallet disconnected successfully', { level: 'info', component: 'Wallet' });
+      this.log('Wallet disconnected successfully', {
+        component: 'Wallet'
+      });
     },
     
-    error: (error: any, context: string) => {
+    error: (context: string, data: any) => {
       this.log(`Wallet error: ${context}`, {
         level: 'error',
         component: 'Wallet',
-        data: { error }
+        data
       });
     },
     

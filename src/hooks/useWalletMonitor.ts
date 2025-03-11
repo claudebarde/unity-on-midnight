@@ -1,7 +1,9 @@
-import { useEffect } from 'react';
+'use client';
+
+import { useEffect, useRef } from 'react';
 import { useMidnightLace } from './useMidnightLace';
-import { toast } from 'sonner';
-import { NetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { NetworkId } from '@midnight-ntwrk/ledger';
+import Logger from '@/lib/utils/logger';
 
 /**
  * useWalletMonitor Hook
@@ -24,56 +26,44 @@ import { NetworkId } from '@midnight-ntwrk/midnight-js-network-id';
  */
 export function useWalletMonitor() {
   const { connected, networkId, address, did } = useMidnightLace();
+  const lastStateRef = useRef({ connected, networkId, address, did });
 
-  // Monitor wallet connection
   useEffect(() => {
-    if (connected) {
-      toast.success('Wallet connected');
-    }
-  }, [connected]);
+    const currentState = { connected, networkId, address, did };
+    const lastState = lastStateRef.current;
 
-  // Monitor network changes
-  useEffect(() => {
-    if (connected && networkId) {
-      const network = NetworkId[networkId];
-      toast.info(`Network: ${network}`);
-    }
-  }, [connected, networkId]);
-
-  // Monitor address changes
-  useEffect(() => {
-    if (connected && address) {
-      toast.info('Address updated', {
-        description: `${address.slice(0, 8)}...${address.slice(-8)}`,
+    // Check for changes
+    if (currentState.connected !== lastState.connected) {
+      Logger.log(`Wallet ${currentState.connected ? 'connected' : 'disconnected'}`, {
+        component: 'WalletMonitor',
+        data: { connected: currentState.connected }
       });
     }
-  }, [connected, address]);
 
-  // Monitor DID changes
-  useEffect(() => {
-    if (connected && did) {
-      toast.info('DID updated', {
-        description: `${did.slice(0, 8)}...${did.slice(-8)}`,
-      });
-    }
-  }, [connected, did]);
-
-  // Set up window event listeners
-  useEffect(() => {
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && connected) {
-        // Refresh wallet state when tab becomes visible
-        try {
-          await window.cardano?.midnight?.isEnabled();
-        } catch (error) {
-          toast.error('Wallet connection lost');
+    if (currentState.networkId !== lastState.networkId) {
+      Logger.log('Network changed', {
+        component: 'WalletMonitor',
+        data: {
+          network: currentState.networkId === NetworkId.TestNet ? 'TestNet' : 'Unknown'
         }
-      }
-    };
+      });
+    }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [connected]);
+    if (currentState.address !== lastState.address) {
+      Logger.log('Address changed', {
+        component: 'WalletMonitor',
+        data: { address: currentState.address }
+      });
+    }
+
+    if (currentState.did !== lastState.did) {
+      Logger.log('DID changed', {
+        component: 'WalletMonitor',
+        data: { did: currentState.did }
+      });
+    }
+
+    // Update ref
+    lastStateRef.current = currentState;
+  }, [connected, networkId, address, did]);
 }

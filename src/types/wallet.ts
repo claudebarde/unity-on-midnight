@@ -1,48 +1,41 @@
-import { NetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import type { WalletState as MidnightWalletState, WalletAPI as MidnightWalletAPI } from './midnight';
-
-// Re-export WalletState from midnight.d.ts
-export type { MidnightWalletState as WalletState };
+import { NetworkId } from '@midnight-ntwrk/ledger';
 
 export enum WalletError {
-  NOT_CONNECTED = "Wallet not connected",
-  WRONG_NETWORK = "Wrong network",
-  REJECTED = "User rejected",
-  TIMEOUT = "Connection timeout",
-  UNKNOWN = "Unknown error"
+  NOT_INSTALLED = 'Midnight Lace wallet is not installed',
+  NOT_CONNECTED = 'Wallet is not connected',
+  USER_REJECTED = 'User rejected the request',
+  INVALID_NETWORK = 'Invalid network',
+  INVALID_ADDRESS = 'Invalid address',
+  INVALID_SIGNATURE = 'Invalid signature',
+  UNKNOWN_ERROR = 'Unknown error occurred'
 }
 
-export interface WalletContextValue {
-  isConnected: boolean;
-  publicKey: string | null;
+export interface WalletState {
   address: string | null;
-  networkId: NetworkId | null;
+  publicKey: string | null;
   did: string | null;
+  networkId: NetworkId;
   kycLevel: number | null;
-  connect: () => Promise<boolean>;
-  disconnect: () => Promise<void>;
+  connected: boolean;
 }
 
-// Re-export WalletAPI and extend if needed
-export interface WalletAPI extends MidnightWalletAPI {}
-
-export interface MnLaceWallet {
-  enable: () => Promise<WalletAPI>;
-  isEnabled: () => Promise<boolean>;
+export interface WalletAPI {
+  state(): Promise<{
+    address: string;
+    did?: string;
+    networkId?: string;
+    kycLevel?: number;
+  }>;
+  enable(): Promise<WalletAPI>;
+  isEnabled(): Promise<boolean>;
+  apiVersion: string;
+  name: string;
 }
 
-export interface MidnightWindow {
-  midnight?: {
-    mnLace: MnLaceWallet;
-  };
-}
-
-export interface WalletSession {
-  address: string; // Combined address|publicKey
-  timestamp: number;
-}
-
-// Extend the Window interface
 declare global {
-  interface Window extends MidnightWindow {}
+  interface Window {
+    midnight?: {
+      mnLace?: WalletAPI;
+    };
+  }
 }

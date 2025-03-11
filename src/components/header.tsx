@@ -7,7 +7,7 @@ import { useWallet } from "@/providers/WalletProvider"
 
 export default function Header() {
   const pathname = usePathname()
-  const { isConnected } = useWallet()
+  const { connected } = useWallet()
 
   return (
     <header className="sticky top-0 z-50 w-full bg-[#26A69A] text-white p-4 shadow-md">
@@ -23,19 +23,19 @@ export default function Header() {
         <nav className="flex-1 flex justify-center space-x-8">
           <Link
             href="/borrower"
-            className={`${!isConnected ? "opacity-50 cursor-not-allowed" : ""} text-white text-base hover:text-white/80 transition-colors`}
+            className={`${!connected ? "pointer-events-none opacity-50" : ""} text-white text-base hover:text-white/80 transition-colors`}
           >
             Borrow
           </Link>
           <Link
             href="/lender"
-            className={`${!isConnected ? "opacity-50 cursor-not-allowed" : ""} text-white text-base hover:text-white/80 transition-colors`}
+            className={`${!connected ? "pointer-events-none opacity-50" : ""} text-white text-base hover:text-white/80 transition-colors`}
           >
             Lend
           </Link>
           <Link
             href="/profile"
-            className={`${!isConnected ? "opacity-50 cursor-not-allowed" : ""} text-white text-base hover:text-white/80 transition-colors`}
+            className={`${!connected ? "pointer-events-none opacity-50" : ""} text-white text-base hover:text-white/80 transition-colors`}
           >
             Profile
           </Link>

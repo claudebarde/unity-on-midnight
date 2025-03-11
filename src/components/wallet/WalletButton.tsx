@@ -7,7 +7,7 @@ import Logger from '@/lib/utils/logger';
 import Image from 'next/image';
 
 export function WalletButton() {
-  const { isConnected, publicKey, address, connect, disconnect } = useWallet();
+  const { connected, address, publicKey, connect, disconnect } = useWallet();
   const [isLoading, setIsLoading] = useState(false);
 
   const formatAddress = (addr: string) => {
@@ -21,18 +21,15 @@ export function WalletButton() {
     
     try {
       setIsLoading(true);
-      Logger.wallet.stateChange({ isConnected, publicKey, address });
+      Logger.wallet.stateChange({ connected, publicKey, address });
       
-      if (isConnected) {
-        Logger.wallet.disconnecting();
+      if (connected) {
         await disconnect();
-        Logger.wallet.disconnected();
       } else {
-        Logger.wallet.connecting();
         await connect();
       }
     } catch (error) {
-      Logger.wallet.error(error, isConnected ? 'disconnect' : 'connect');
+      Logger.wallet.error(connected ? 'disconnect' : 'connect', { error });
     } finally {
       setIsLoading(false);
       Logger.log('Wallet operation completed', { component: 'WalletButton' });
@@ -49,10 +46,10 @@ export function WalletButton() {
         className="rounded-full"
       />
       <span className="font-medium whitespace-nowrap">
-        {isConnected && address ? formatAddress(address) : "Connect Lace"}
+        {connected && address ? formatAddress(address) : "Connect Lace"}
       </span>
       {isLoading && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
-      {isConnected && (
+      {connected && (
         <div className="w-[8px] h-[8px] rounded-full bg-[#00D588] shadow-[0_0_4px_rgba(0,213,136,0.4)] ml-2" />
       )}
     </>
@@ -62,7 +59,7 @@ export function WalletButton() {
     <div 
       className={`
         relative inline-flex items-center justify-center
-        ${isConnected ? 'w-[200px]' : 'w-[160px]'}
+        ${connected ? 'w-[200px]' : 'w-[160px]'}
         h-[44px]
       `}
     >

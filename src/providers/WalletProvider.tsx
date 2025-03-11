@@ -1,241 +1,101 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { toast } from 'sonner';
+import { createContext, useContext, useState, useCallback } from 'react';
+import { NetworkId } from '@midnight-ntwrk/ledger';
 import Logger from '@/lib/utils/logger';
-import { NetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import type { WalletContextValue, WalletSession } from '@/types/wallet';
+import { WalletState } from '@/types/wallet';
 
-const WALLET_SESSION_KEY = 'wallet_session';
+interface WalletContextType {
+  isLoading: boolean;
+  connected: boolean;
+  address: string | null;
+  publicKey: string | null;
+  did: string | null;
+  networkId: NetworkId;
+  kycLevel: number | null;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+}
 
-const WalletContext = createContext<WalletContextValue>({
-  isConnected: false,
-  publicKey: null,
-  address: null,
-  networkId: null,
-  did: null,
-  kycLevel: null,
-  connect: async () => false,
-  disconnect: async () => {},
-});
+const WalletContext = createContext<WalletContextType | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const [isConnected, setIsConnected] = useState(false);
-  const [publicKey, setPublicKey] = useState<string | null>(null);
-  const [address, setAddress] = useState<string | null>(null);
-  const [networkId, setNetworkId] = useState<NetworkId | null>(null);
-  const [did, setDid] = useState<string | null>(null);
-  const [kycLevel, setKycLevel] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [walletState, setWalletState] = useState<WalletState>({
+    connected: false,
+    address: null,
+    publicKey: null,
+    did: null,
+    networkId: NetworkId.TestNet,
+    kycLevel: null
+  });
 
-  // Load session on mount
-  useEffect(() => {
-    const loadSession = async () => {
-      try {
-        const sessionData = localStorage.getItem(WALLET_SESSION_KEY);
-        if (!sessionData) return;
-
-        const session: WalletSession = JSON.parse(sessionData);
-        
-        // Verify wallet is still available
-        if (!window.midnight?.mnLace) {
-          localStorage.removeItem(WALLET_SESSION_KEY);
-          return;
-        }
-
-        // Try to reconnect
-        const api = await window.midnight.mnLace.enable();
-        if (!api) {
-          localStorage.removeItem(WALLET_SESSION_KEY);
-          return;
-        }
-
-        const state = await api.state();
-        if (!state?.address) {
-          localStorage.removeItem(WALLET_SESSION_KEY);
-          return;
-        }
-
-        // Verify address matches saved session
-        if (state.address !== session.address) {
-          localStorage.removeItem(WALLET_SESSION_KEY);
-          return;
-        }
-
-        // Extract wallet info
-        const [walletAddress, walletPublicKey] = state.address.split('|');
-        setAddress(walletAddress);
-        setPublicKey(walletPublicKey);
-        setNetworkId(state.networkId ? (state.networkId as NetworkId) : null);
-        setDid(state.did || null);
-        setKycLevel(state.kycLevel || null);
-        setIsConnected(true);
-
-        Logger.log('🔵 Wallet Session Restored', {
-          component: 'WalletProvider',
-          data: { address: walletAddress }
-        });
-      } catch (error) {
-        localStorage.removeItem(WALLET_SESSION_KEY);
-        Logger.log('⚠️ Failed to restore wallet session', {
-          component: 'WalletProvider',
-          data: { error }
-        });
-      }
-    };
-
-    loadSession();
-  }, []);
-
-  // Save session when connection state changes
-  useEffect(() => {
-    if (isConnected && address && publicKey) {
-      const session: WalletSession = {
-        address: `${address}|${publicKey}`,
-        timestamp: Date.now()
-      };
-      localStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session));
-      
-      Logger.log('🔵 Wallet Session Saved', {
-        component: 'WalletProvider',
-        data: { address }
-      });
-    }
-  }, [isConnected, address, publicKey]);
-
-  // Handle page visibility changes
-  useEffect(() => {
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && isConnected) {
-        // Verify wallet is still connected when page becomes visible
-        try {
-          const api = await window.midnight?.mnLace?.enable();
-          const state = await api?.state();
-          
-          if (!api || !state?.address) {
-            Logger.log('⚠️ Wallet disconnected while away', {
-              component: 'WalletProvider'
-            });
-            await disconnect();
-          }
-        } catch (error) {
-          Logger.log('⚠️ Failed to verify wallet connection', {
-            component: 'WalletProvider',
-            data: { error }
-          });
-          await disconnect();
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [isConnected]);
-
-  // Log connection status changes
-  useEffect(() => {
-    if (isConnected) {
-      Logger.log('🔵 Wallet Connected', {
-        component: 'WalletProvider',
-        data: {
-          isConnected,
-          publicKey,
-          address,
-          networkId,
-          did,
-          kycLevel,
-        }
-      });
-    }
-  }, [isConnected, publicKey, address, networkId, did, kycLevel]);
-
-  const connect = async (): Promise<boolean> => {
+  const connect = useCallback(async () => {
     try {
+      Logger.wallet.connecting();
+      setIsLoading(true);
+      
       if (!window.midnight?.mnLace) {
-        Logger.log('⚠️ Midnight Lace wallet not found', {
-          component: 'WalletProvider',
-          data: {
-            window: typeof window,
-            midnight: !!window.midnight,
-            mnLace: !!window.midnight?.mnLace
-          }
-        });
-        toast.error('Please install Midnight Lace wallet');
-        return false;
+        throw new Error('Midnight Lace wallet not installed');
       }
 
       const api = await window.midnight.mnLace.enable();
-      if (!api) {
-        toast.error('Failed to connect to wallet');
-        return false;
-      }
-
       const state = await api.state();
-      if (!state?.address) {
-        toast.error('Failed to get wallet state');
-        return false;
-      }
 
-      // Extract wallet info
-      const [walletAddress, walletPublicKey] = state.address.split('|');
-      setAddress(walletAddress);
-      setPublicKey(walletPublicKey);
-      setNetworkId(state.networkId ? (state.networkId as NetworkId) : null);
-      setDid(state.did || null);
-      setKycLevel(state.kycLevel || null);
-      setIsConnected(true);
-      
-      toast.success('Wallet connected successfully');
-      return true;
-    } catch (error: any) {
-      Logger.log('⚠️ Wallet Connection Error', {
-        component: 'WalletProvider',
-        data: {
-          errorMessage: error.message || 'Unknown error',
-          errorType: error.name,
-          errorStack: error.stack
-        }
+      // Extract public key from combined address
+      const [address, publicKey] = state.address.split('|');
+
+      setWalletState({
+        connected: true,
+        address: state.address,
+        publicKey: publicKey || null,
+        did: state.did || null,
+        networkId: NetworkId.TestNet,
+        kycLevel: state.kycLevel || null
       });
-      toast.error(error.message || 'Failed to connect wallet');
-      return false;
-    }
-  };
 
-  const disconnect = async () => {
+      Logger.wallet.connected({
+        address: state.address,
+        publicKey,
+        networkId: NetworkId.TestNet,
+        did: state.did || null,
+        kycLevel: state.kycLevel || null
+      });
+    } catch (error: any) {
+      Logger.wallet.error('connect', { error: error.message });
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const disconnect = useCallback(async () => {
     try {
-      localStorage.removeItem(WALLET_SESSION_KEY);
-      setAddress(null);
-      setPublicKey(null);
-      setNetworkId(null);
-      setDid(null);
-      setKycLevel(null);
-      setIsConnected(false);
-      toast.success('Wallet disconnected');
-    } catch (error: any) {
-      Logger.log('⚠️ Wallet Disconnection Error', {
-        component: 'WalletProvider',
-        data: {
-          errorMessage: error.message || 'Unknown error',
-          errorType: error.name,
-          errorStack: error.stack
-        }
+      Logger.wallet.disconnecting();
+
+      setWalletState({
+        connected: false,
+        address: null,
+        publicKey: null,
+        did: null,
+        networkId: NetworkId.TestNet,
+        kycLevel: null
       });
-      toast.error('Failed to disconnect wallet');
+
+      Logger.wallet.disconnected();
+    } catch (error: any) {
+      Logger.wallet.error('disconnect', { error: error.message });
+      throw error;
     }
-  };
+  }, []);
 
   return (
     <WalletContext.Provider
       value={{
-        isConnected,
-        publicKey,
-        address,
-        networkId,
-        did,
-        kycLevel,
+        isLoading,
+        ...walletState,
         connect,
-        disconnect,
+        disconnect
       }}
     >
       {children}
