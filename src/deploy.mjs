@@ -10,9 +10,10 @@ import { firstValueFrom } from 'rxjs';
 dotenv.config();
 
 const kycContractModule = await import('../build/contracts/kyc/contract/index.cjs');
-const dummyKey = Buffer.from('dummy-key-32-bytes-long-for-test');
+// Use a proper 32-byte secret key (could be derived from mnemonic later)
+const secretKey = Buffer.from('secret-key-32-bytes-for-kyc-test123456');
 const createWitness = (key) => () => [null, key];
-const kycContract = new kycContractModule.Contract({ local_secret_key: createWitness(dummyKey) });
+const kycContract = new kycContractModule.Contract({ local_secret_key: createWitness(secretKey) });
 
 const CONFIG = {
   indexer: 'https://indexer.testnet-02.midnight.network',
@@ -85,18 +86,10 @@ async function createProviders() {
     zkConfigProvider: {
       async getVerifierKey(name, contract = 'kyc') {
         const keyPath = join('build', 'contracts', contract, 'keys', `${name}.verifier`);
-        try {
-          const key = await readFile(keyPath, 'utf8');
-          const keyLength = key.length;
-          if (keyLength === 0) {
-            throw new Error(`Empty verifier key found for ${name}`);
-          }
-          console.log(`Loaded verifier key for ${contract}/${name}: ${keyLength} bytes`);
-          return String(key);
-        } catch (error) {
-          console.error(`Failed to load verifier key ${keyPath}:`, error);
-          throw error;
-        }
+        const keyBuffer = await readFile(keyPath); // Load as Buffer
+        const key = Uint8Array.from(keyBuffer); // Convert to Uint8Array
+        console.log(`Loaded verifier key for ${contract}/${name}: ${key.length} bytes (type: ${key.constructor.name})`);
+        return key;
       },
       async getVerifierKeys(names, contract = 'kyc') {
         return Promise.all(names.map(n => this.getVerifierKey(n, contract)));
@@ -108,39 +101,83 @@ async function createProviders() {
 }
 
 async function deployContractWithLogging(providers, options, name) {
-  console.log(`Deploying ${name} contract...`);
-  console.log('walletProvider.coinPublicKey:', providers.walletProvider.coinPublicKey);
+  console.log(`\n=== Deploying ${name} Contract ===\n`);
+  console.log('Contract Circuits:', Object.keys(options.contract.circuits));
   
-  // Log contract circuits
-  console.log('Contract circuits:', Object.keys(options.contract.circuits));
-  
-  // Log verifier keys
-  const verifierKeyInfo = Array.from(options.verifierKeys.entries()).map(([circuit, key]) => ({
-    circuit,
-    keyLength: key.length
-  }));
-  console.log('Verifier keys:', JSON.stringify(verifierKeyInfo, null, 2));
+  // Convert Map to array of [circuit, key] pairs
+  const verifierKeys = Array.from(options.verifierKeys.entries()).map(([circuit, key]) => [
+    String(circuit), // Ensure string type
+    key instanceof Uint8Array ? key : new Uint8Array(Buffer.from(key)) // Ensure Uint8Array type
+  ]);
 
-  // Log initial state structure
+  // Log each pair's structure
+  console.log('\n=== Verifier Key Pairs ===');
+  verifierKeys.forEach(([circuit, key], index) => {
+    console.log(`\nPair ${index + 1}:`, {
+      circuit,
+      circuitType: typeof circuit,
+      keyType: key instanceof Uint8Array ? 'Uint8Array' : key?.constructor?.name,
+      keyLength: key?.length,
+      keyHeader: key instanceof Uint8Array ? Buffer.from(key.slice(0, 4)).toString('hex') : 'N/A'
+    });
+  });
+
   const stateInfo = {
     contract: options.contract.constructor.name,
     privateStateKey: options.privateStateKey,
     initialState: {
-      recordsMap: Array.from(options.initialPrivateState[0].entries()),
-      verifiersMap: Array.from(options.initialPrivateState[1].entries())
+      records: { type: 'Map<Bytes<32>, KYCRecord>', size: options.initialPrivateState[0].size },
+      verifiers: { type: 'Map<Bytes<32>, Field>', size: options.initialPrivateState[1].size },
+      admin: { type: 'Bytes<32>', value: options.initialPrivateState[2] },
+      kycCounter: { type: 'Counter', value: options.initialPrivateState[3] }
     },
-    verifierKeys: Array.from(options.verifierKeys.keys())
+    verifierKeys: verifierKeys.map(([circuit]) => circuit) // Show circuit names only
   };
-  console.log('Deployment options:', JSON.stringify(stateInfo, (key, value) => 
-    typeof value === 'bigint' ? value.toString() : value
-  , 2));
+  console.log('\nDeployment Configuration:', JSON.stringify(stateInfo, null, 2));
 
   try {
-    const deployed = await deployContract(providers, options);
-    console.log(`${name} contract deployed at:`, deployed.deployTxData.public.contractAddress);
+    console.log('\nAttempting deployment with array of pairs...');
+    console.log('VerifierKeys structure:', {
+      type: 'Array of Pairs',
+      length: verifierKeys.length,
+      samplePair: {
+        circuit: verifierKeys[0][0],
+        circuitType: typeof verifierKeys[0][0],
+        keyType: verifierKeys[0][1] instanceof Uint8Array ? 'Uint8Array' : 'Unknown',
+        keyHeader: verifierKeys[0][1] instanceof Uint8Array ? Buffer.from(verifierKeys[0][1].slice(0, 4)).toString('hex') : 'N/A'
+      }
+    });
+
+    const deployed = await deployContract(providers, {
+      ...options,
+      verifierKeys // Pass array of [circuit, key] pairs
+    });
+    console.log(`\n✓ ${name} contract deployed successfully at:`, deployed.deployTxData.public.contractAddress);
     return deployed;
   } catch (error) {
-    console.error(`Failed to deploy ${name} contract:`, error.stack || error);
+    console.error(`\n✗ Failed to deploy ${name} contract:`, error.message);
+    console.error('\nVerifierKeys Array State at Error:', {
+      length: verifierKeys.length,
+      pairs: verifierKeys.map(([circuit, key], index) => ({
+        index,
+        circuit: {
+          value: circuit,
+          type: typeof circuit,
+          constructor: circuit?.constructor?.name
+        },
+        key: {
+          type: key instanceof Uint8Array ? 'Uint8Array' : key?.constructor?.name,
+          length: key?.length,
+          header: key instanceof Uint8Array ? Buffer.from(key.slice(0, 4)).toString('hex') : 'N/A'
+        }
+      }))
+    });
+    console.error('\nError Details:', {
+      message: error.message,
+      name: error.name,
+      type: error.constructor.name,
+      stack: error.stack?.split('\n')
+    });
     throw error;
   }
 }
@@ -151,32 +188,58 @@ async function main() {
     console.log('Creating providers...');
     const providers = await createProviders();
 
-    // Get circuits from contract
-    const kycCircuits = Object.keys(kycContract.circuits);
-    console.log('Loading verifier keys for circuits:', kycCircuits);
-
-    // Load and validate verifier keys
+    // Log detailed contract module information
+    console.log('\n=== Contract Module Analysis ===');
+    console.log('Module exports:', Object.keys(kycContractModule));
+    console.log('Contract instance type:', kycContract.constructor.name);
+    console.log('Contract properties:', Object.getOwnPropertyNames(kycContract));
+    
+    const kycCircuits = [
+      'generate_key_proof',
+      'set_admin',
+      'add_verifier',
+      'remove_verifier',
+      'submit_kyc',
+      'verify_kyc',
+      'get_kyc_status',
+      'is_verified',
+      'is_verifier'
+    ];
+    
+    console.log('\n=== Loading Verifier Keys ===');
     const kycVerifierKeys = new Map();
     for (const circuit of kycCircuits) {
       const key = await providers.zkConfigProvider.getVerifierKey(circuit, 'kyc');
       if (!key || key.length === 0) {
+        console.error(`Warning: Empty verifier key for circuit: ${circuit}`);
         throw new Error(`Empty verifier key for circuit: ${circuit}`);
       }
       kycVerifierKeys.set(circuit, key);
-      console.log(`Loaded key for ${circuit}: ${key.length} bytes`);
+      console.log(`✓ Loaded key for ${circuit}: ${key.length} bytes`);
     }
 
-    // Initialize contract state with two Maps
-    const initialState = [
-      new Map(), // records
-      new Map()  // verifiers
-    ];
-    console.log('Initial state structure:', {
-      recordsLength: initialState[0].size,
-      verifiersLength: initialState[1].size
-    });
+    // Verify no empty keys in map
+    console.log('\n=== Verifying Verifier Keys Map ===');
+    for (const [circuit, key] of kycVerifierKeys.entries()) {
+      if (!circuit || circuit.trim() === '') {
+        console.error('Found empty circuit name in verifierKeys!');
+        throw new Error('Empty circuit name detected in verifierKeys');
+      }
+      if (!key || key.length === 0) {
+        console.error(`Empty key found for circuit: ${circuit}`);
+        throw new Error(`Empty key detected for circuit: ${circuit}`);
+      }
+    }
+    console.log('✓ All verifier keys validated');
 
-    // Deploy with dual-map state
+    const coinPublicKey = providers.walletProvider.coinPublicKey;
+    const initialState = [
+      new Map(),              // records: Map<Bytes<32>, KYCRecord>
+      new Map(),              // verifiers: Map<Bytes<32>, Field>
+      coinPublicKey,          // admin: Bytes<32>
+      0                       // kycCounter: Counter
+    ];
+
     const kycDeployed = await deployContractWithLogging(providers, {
       contract: kycContract,
       initialPrivateState: initialState,
@@ -184,12 +247,18 @@ async function main() {
       verifierKeys: kycVerifierKeys
     }, 'KYC');
 
-    console.log('KYC contract deployed successfully!');
+    console.log('\n=== Deployment Success ===');
     const addresses = { kyc: kycDeployed.deployTxData.public.contractAddress };
     await writeFile('deployed-addresses.json', JSON.stringify(addresses, null, 2));
-    console.log('Addresses saved to deployed-addresses.json');
+    console.log('Contract addresses saved to deployed-addresses.json');
   } catch (error) {
-    console.error('Deployment failed:', error.stack || error);
+    console.error('\n=== Deployment Failed ===');
+    console.error('Error:', {
+      message: error.message,
+      name: error.name,
+      type: error.constructor.name,
+      stack: error.stack?.split('\n')
+    });
     throw error;
   }
 }
