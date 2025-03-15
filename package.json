@@ -2,17 +2,21 @@
   "name": "unity-on-midnight",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "compile": "cd src/blockchain/contracts && compactc amm_interface.compact ../../../build/contracts/amm && compactc kyc_verification.compact ../../../build/contracts/kyc && compactc did_registry.compact ../../../build/contracts/did",
-    "deploy": "node --loader ts-node/esm src/deploy.ts"
+    "deploy": "node src/deploy.cjs"
   },
   "dependencies": {
-    "@midnight-ntwrk/midnight-js-level-private-state-provider": "^0.1.0",
+    "@midnight-ntwrk/midnight-js-contracts": "0.2.5",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "0.2.5",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "0.2.5",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "0.2.5",
+    "@midnight-ntwrk/wallet": "3.7.5",
+    "@midnight-ntwrk/zswap": "3.0.6",
     "bip39": "3.1.0",
     "dotenv": "16.4.5",
-    "ts-node": "10.9.2",
-    "typescript": "5.5.4",
+    "node-fetch": "2.7.0",
+    "rxjs": "7.8.1",
     "ws": "8.18.0"
   }
 }
