@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "compile": "cd src/blockchain/contracts && compactc amm_interface.compact ../../../build/contracts/amm && compactc kyc_verification.compact ../../../build/contracts/kyc && compactc did_registry.compact ../../../build/contracts/did",
-    "deploy": "node src/deploy.mjs"
+    "compile": "cd src/blockchain/contracts && $COMPACT_PATH amm_interface.compact ../../../build/contracts/amm && $COMPACT_PATH kyc_verification.compact ../../../build/contracts/kyc && $COMPACT_PATH did_registry.compact ../../../build/contracts/did",
+    "deploy": "node src/deploy-kyc.mjs"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.7.0",
@@ -20,11 +20,11 @@
     "@midnight-ntwrk/midnight-js-utils": "0.2.5",
     "@midnight-ntwrk/onchain-runtime": "0.2.6",
     "@midnight-ntwrk/wallet": "3.7.5",
-    "@midnight-ntwrk/wallet-api": "3.6.0",
+    "@midnight-ntwrk/wallet-api": "3.5.0",
     "@midnight-ntwrk/zswap": "3.0.6",
     "bip39": "3.1.0",
     "dotenv": "16.4.5",
-    "node-fetch": "2.7.0",
+    "node-fetch": "^3.3.2",
     "rxjs": "7.8.1",
     "ws": "8.18.0"
   }
